@@ -610,7 +610,7 @@ els.leaveBtn.addEventListener('click', () => {
 iceServers: [
   { urls: 'stun:stun.l.google.com:19302' },
   {
-    urls: 'free.expressturn.com:3478',   // use the host shown in your dashboard
+    urls: 'turn:free.expressturn.com:3478',   // <-- Added 'turn:' prefix here
     username: '000000002098864023',
     credential: 'NzC5d9rM4ZACkoQQgq/dGEXclr0=',
   },
