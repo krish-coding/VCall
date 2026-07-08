@@ -1,0 +1,13 @@
+{
+  "name": "lowbw-call-signaling",
+  "version": "1.0.0",
+  "description": "Minimal WebSocket signaling server for low-bandwidth WebRTC calls",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

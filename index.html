@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VCall</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2f3a;
+    --text: #e8eaed;
+    --muted: #8a8f98;
+    --good: #3ecf8e;
+    --warn: #e0a83a;
+    --bad: #e05a5a;
+    --accent: #5b8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    width: 100%;
+    max-width: 720px;
+    margin-bottom: 14px;
+  }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  input[type=text] {
+    background: #0c0e12;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    flex: 1;
+    min-width: 120px;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.secondary { background: #2a2f3a; }
+  button.danger { background: var(--bad); }
+  .videos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+    max-width: 720px;
+  }
+  .video-wrap {
+    position: relative;
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    border: 1px solid var(--border);
+  }
+  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .label {
+    position: absolute; bottom: 6px; left: 8px;
+    font-size: 12px; background: rgba(0,0,0,0.6);
+    padding: 2px 8px; border-radius: 6px; color: var(--muted);
+  }
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 6px; background: var(--muted);
+  }
+  .status-dot.good { background: var(--good); }
+  .status-dot.warn { background: var(--warn); }
+  .status-dot.bad { background: var(--bad); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .stats {
+    font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin-top: 10px;
+  }
+  .stats b { color: var(--text); }
+  .banner {
+    font-size: 13px; padding: 8px 12px; border-radius: 8px;
+    background: #2a2415; color: var(--warn); display: none; margin-top: 10px;
+  }
+  .banner.show { display: block; }
+
+  .controls-bar {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    width: 100%;
+    max-width: 720px;
+    margin: 4px 0 16px;
+  }
+  .ctrl-btn {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    padding: 0;
+  }
+  .ctrl-btn:hover:not(:disabled) { background: #23272f; }
+  .ctrl-btn:active:not(:disabled) { transform: scale(0.94); }
+  .ctrl-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .ctrl-btn svg { width: 22px; height: 22px; stroke: var(--text); fill: none; }
+  .ctrl-btn.off { background: var(--bad); border-color: var(--bad); }
+  .ctrl-btn.off svg { stroke: white; }
+  .ctrl-btn.leave-btn { background: var(--bad); border-color: var(--bad); }
+  .ctrl-btn.leave-btn svg { stroke: white; }
+  .ctrl-btn.leave-btn:hover:not(:disabled) { background: #c94848; }
+
+  .call-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 720px;
+    position: relative;
+  }
+  .call-stage.is-fullscreen {
+    max-width: none;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    justify-content: center;
+  }
+  .call-stage.is-fullscreen .videos {
+    max-width: none;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .call-stage.is-fullscreen .video-wrap { border-radius: 0; border: none; aspect-ratio: unset; }
+  .call-stage.is-fullscreen #localVideo { display: none; }
+  .call-stage.is-fullscreen .video-wrap:first-child {
+    position: absolute; width: 160px; aspect-ratio: 4/3; bottom: 90px; right: 16px;
+    border-radius: 10px; border: 1px solid var(--border); z-index: 2;
+  }
+  .call-stage.is-fullscreen .video-wrap:first-child #localVideo { display: block; }
+  .call-stage.is-fullscreen .controls-bar {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    background: rgba(15, 17, 21, 0.72);
+    backdrop-filter: blur(6px);
+    padding: 10px 18px;
+    border-radius: 40px;
+    z-index: 5;
+    width: auto;
+  }
+</style>
+</head>
+<body>
+
+<h1>VCall</h1>
+<div class="sub">Tuned for slow / unstable networks — audio is prioritized over video automatically.</div>
+
+<div class="panel">
+  <div class="row">
+    <input type="text" id="serverUrl" placeholder="ws://localhost:8080" value="ws://localhost:8080" />
+    <input type="text" id="roomId" placeholder="room name (share with the other person)" />
+    <button id="joinBtn">Join call</button>
+  </div>
+  <div class="banner" id="banner"></div>
+</div>
+
+<div class="call-stage" id="callStage">
+  <div class="videos" id="videosContainer">
+    <div class="video-wrap">
+      <video id="localVideo" autoplay muted playsinline></video>
+      <div class="label">You</div>
+    </div>
+    <div class="video-wrap">
+      <video id="remoteVideo" autoplay playsinline></video>
+      <div class="label"><span class="status-dot" id="connDot"></span><span id="connLabel">waiting</span></div>
+    </div>
+  </div>
+
+  <div class="controls-bar">
+    <button class="ctrl-btn" id="micBtn" disabled title="Mute microphone">
+      <svg id="micIconOn" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+      <svg id="micIconOff" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+        <line x1="2" y1="2" x2="22" y2="22"/>
+        <path d="M9 9v3a3 3 0 0 0 4.73 2.46"/>
+        <path d="M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+        <path d="M17 10v2a5 5 0 0 1-7.6 4.27"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
+
+    <button class="ctrl-btn" id="camBtn" disabled title="Turn off camera">
+      <svg id="camIconOn" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="23 7 16 12 23 17 23 7"/>
+        <rect x="1" y="5" width="15" height="14" rx="2"/>
+      </svg>
+      <svg id="camIconOff" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+        <line x1="1" y1="1" x2="23" y2="23"/>
+        <path d="M17 17H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/>
+        <path d="M9 5h5l2 3h5v9.34"/>
+      </svg>
+    </button>
+
+    <button class="ctrl-btn" id="fullscreenBtn" disabled title="Full screen">
+      <svg id="fsIconEnter" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 3H5a2 2 0 0 0-2 2v3"/>
+        <path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
+        <path d="M3 16v3a2 2 0 0 0 2 2h3"/>
+        <path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+      </svg>
+      <svg id="fsIconExit" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+        <path d="M8 3v3a2 2 0 0 1-2 2H3"/>
+        <path d="M21 8h-3a2 2 0 0 1-2-2V3"/>
+        <path d="M3 16h3a2 2 0 0 1 2 2v3"/>
+        <path d="M16 21v-3a2 2 0 0 1 2-2h3"/>
+      </svg>
+    </button>
+
+    <button class="ctrl-btn leave-btn" id="leaveBtn" disabled title="Leave call">
+      <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a1 1 0 0 1 1.11-.21 12.4 12.4 0 0 0 3.88.62 1 1 0 0 1 1 1V19a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h2.75a1 1 0 0 1 1 1 12.4 12.4 0 0 0 .62 3.88 1 1 0 0 1-.21 1.11z"/>
+        <line x1="2" y1="2" x2="22" y2="22"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="row">
+    <span class="status-dot" id="linkDot"></span>
+    <span id="linkText" style="font-size:13px;color:var(--muted)">Not connected</span>
+  </div>
+  <div class="stats" id="statsBox">
+    <div>Video: <b id="statVideo">off</b></div>
+    <div>Quality: <b id="statTier">–</b></div>
+    <div>Available bandwidth: <b id="statAvailBw">–</b></div>
+    <div>Audio bitrate: <b id="statAudioKbps">–</b></div>
+    <div>Video bitrate: <b id="statVideoKbps">–</b></div>
+    <div>Packet loss: <b id="statLoss">–</b></div>
+    <div>RTT: <b id="statRtt">–</b></div>
+    <div>Jitter buffer: <b id="statJitter">–</b></div>
+  </div>
+</div>
+
+<script src="client.js"></script>
+</body>
+</html>
