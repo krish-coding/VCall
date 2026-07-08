@@ -137,7 +137,7 @@ function setLinkStatus(state, text) {
 // Signaling (WebSocket) with reconnect-with-backoff
 // ---------------------------------------------------------------------
 function connectSignaling() {
-  const url = els.serverUrl.value.trim();
+  const url = 'wss://vcall-5ngo.onrender.com';
   ws = new WebSocket(url);
 
   ws.onopen = () => {
