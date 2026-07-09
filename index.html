@@ -173,19 +173,27 @@
     border-radius: 40px;
     z-index: 5;
     width: auto;
-    .header-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin: 0 0 4px;
-}
+  }
+  /* Main (non-pip) video fills the screen edge-to-edge in fullscreen but
+     is never cropped — letterboxes with black bars instead, so the whole
+     frame stays visible regardless of the video's or screen's orientation
+     (portrait phone video on a landscape screen, etc). */
+  .call-stage.is-fullscreen .video-wrap:last-child video {
+    object-fit: contain;
+    background: #000;
+  }
 
-.logo {
-  height: 32px; /* Adjust this value to make your logo bigger or smaller */
-  width: auto;
-  object-fit: contain;
-}
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin: 0 0 4px;
+  }
+  .logo {
+    height: 32px;
+    width: auto;
+    object-fit: contain;
   }
 </style>
 </head>
@@ -196,6 +204,7 @@
 
 <div class="panel">
   <div class="row">
+    <button id="permBtn" title="Grant camera and microphone access">Allow camera &amp; microphone</button>
    <input type="text" id="roomId" placeholder="room name (share with the other person)" />
     <button id="joinBtn">Join call</button>
   </div>
@@ -209,7 +218,7 @@
       <div class="label">You</div>
     </div>
     <div class="video-wrap">
-      <video id="remoteVideo" autoplay playsinline></video>
+      <video id="remoteVideo" autoplay playsinline autopictureinpicture></video>
       <div class="label"><span class="status-dot" id="connDot"></span><span id="connLabel">waiting</span></div>
     </div>
   </div>
@@ -256,6 +265,13 @@
         <path d="M21 8h-3a2 2 0 0 1-2-2V3"/>
         <path d="M3 16h3a2 2 0 0 1 2 2v3"/>
         <path d="M16 21v-3a2 2 0 0 1 2-2h3"/>
+      </svg>
+    </button>
+
+    <button class="ctrl-btn" id="pipBtn" disabled title="Picture-in-picture">
+      <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <rect x="12" y="12" width="8" height="6" rx="1" fill="var(--text)" stroke="none"/>
       </svg>
     </button>
 

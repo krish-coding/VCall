@@ -20,10 +20,10 @@
 const $ = (id) => document.getElementById(id);
 
 const els = {
-  serverUrl: $('serverUrl'),
   roomId: $('roomId'),
   joinBtn: $('joinBtn'),
   leaveBtn: $('leaveBtn'),
+  permBtn: $('permBtn'),
   banner: $('banner'),
   localVideo: $('localVideo'),
   remoteVideo: $('remoteVideo'),
@@ -42,6 +42,7 @@ const els = {
   micBtn: $('micBtn'),
   camBtn: $('camBtn'),
   fullscreenBtn: $('fullscreenBtn'),
+  pipBtn: $('pipBtn'),
   videosContainer: $('videosContainer'),
   callStage: $('callStage'),
   micIconOn: $('micIconOn'),
@@ -77,6 +78,10 @@ const CAPTURE = {
 };
 
 const CONFIG = {
+  // Your deployed signaling server (Render). Update this if you redeploy
+  // to a different host.
+  signalingUrl: 'wss://vcall-5ngo.onrender.com',
+
   audioMaxBitrateKbps: 32,   // Opus — plenty for clear speech, negligible cost
   audioMinBitrateKbps: 6,    // floor Opus can drop to under real pressure
 
@@ -95,9 +100,11 @@ const CONFIG = {
 
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    // Add your TURN server here once deployed — REQUIRED for most campus
-    // networks, since they commonly block direct P2P / UDP hole punching:
-    // { urls: 'turn:your-turn-server:3478', username: 'user', credential: 'pass' },
+    {
+      urls: 'turn:free.expressturn.com:3478',
+      username: '000000002098864023',
+      credential: 'NzC5d9rM4ZACkoQQgq/dGEXclr0=',
+    },
   ],
 };
 
@@ -119,6 +126,7 @@ let connectionEstablishedAt = null; // set when ICE first reaches 'connected'/'c
 let smoothedAvailKbps = null;
 let micMuted = false;
 let userVideoOff = false; // manual camera-off, distinct from network-forced video-off
+let mediaReady = false;   // true once camera/mic permission has been granted
 
 function setBanner(text, show = true) {
   els.banner.textContent = text;
@@ -137,7 +145,7 @@ function setLinkStatus(state, text) {
 // Signaling (WebSocket) with reconnect-with-backoff
 // ---------------------------------------------------------------------
 function connectSignaling() {
-  const url = 'wss://vcall-5ngo.onrender.com';
+  const url = CONFIG.signalingUrl;
   ws = new WebSocket(url);
 
   ws.onopen = () => {
@@ -523,10 +531,84 @@ document.addEventListener('fullscreenchange', () => {
   els.fullscreenBtn.title = isFs ? 'Exit full screen' : 'Full screen';
 });
 
+// ---------------------------------------------------------------------
+// Picture-in-Picture: keeps the other person visible in a floating window
+// when the app is minimized or you switch tabs/apps mid-call.
+//
+// Two mechanisms layered together:
+//   1. `autopictureinpicture` attribute on the video element (set in HTML)
+//      — Chrome/Edge on Android and desktop handle this automatically the
+//      moment the tab/app is backgrounded. No JS needed for this path.
+//   2. A manual fallback here for browsers that need an explicit request
+//      (and Safari, which uses its own webkitSetPresentationMode API
+//      instead of the standard Picture-in-Picture API).
+// ---------------------------------------------------------------------
+function pipIsSupported() {
+  return document.pictureInPictureEnabled
+    || (els.remoteVideo.webkitSupportsPresentationMode
+        && typeof els.remoteVideo.webkitSetPresentationMode === 'function');
+}
+
+async function togglePiP() {
+  try {
+    if (els.remoteVideo.webkitSupportsPresentationMode
+        && typeof els.remoteVideo.webkitSetPresentationMode === 'function') {
+      // Safari (iOS/macOS) path
+      const inPip = els.remoteVideo.webkitPresentationMode === 'picture-in-picture';
+      els.remoteVideo.webkitSetPresentationMode(inPip ? 'inline' : 'picture-in-picture');
+      return;
+    }
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture();
+    } else if (document.pictureInPictureEnabled && els.remoteVideo.srcObject) {
+      await els.remoteVideo.requestPictureInPicture();
+    }
+  } catch (e) {
+    console.warn('Picture-in-Picture failed', e);
+  }
+}
+
+function setPipButtonState(active) {
+  els.pipBtn.classList.toggle('off', active);
+  els.pipBtn.title = active ? 'Exit picture-in-picture' : 'Picture-in-picture';
+}
+
+els.remoteVideo.addEventListener('enterpictureinpicture', () => setPipButtonState(true));
+els.remoteVideo.addEventListener('leavepictureinpicture', () => setPipButtonState(false));
+els.remoteVideo.addEventListener('webkitpresentationmodechanged', () => {
+  setPipButtonState(els.remoteVideo.webkitPresentationMode === 'picture-in-picture');
+});
+
+// Fallback for browsers that don't auto-PiP via the HTML attribute alone:
+// try to enter PiP the moment the app is backgrounded mid-call, and leave
+// it when you come back. This is best-effort — some browsers only allow
+// requestPictureInPicture() from a direct user gesture and will silently
+// reject it here, which is fine, since the `autopictureinpicture`
+// attribute already covers those browsers natively.
+document.addEventListener('visibilitychange', () => {
+  if (!pc || !els.remoteVideo.srcObject) return; // not in an active call
+
+  if (document.hidden) {
+    if (document.pictureInPictureEnabled && !document.pictureInPictureElement) {
+      els.remoteVideo.requestPictureInPicture().catch(() => {});
+    }
+  } else {
+    if (document.pictureInPictureElement === els.remoteVideo) {
+      document.exitPictureInPicture().catch(() => {});
+    }
+  }
+});
+
+els.pipBtn.addEventListener('click', togglePiP);
+if (!pipIsSupported()) {
+  els.pipBtn.style.display = 'none';
+}
+
 function setInCallControlsEnabled(enabled) {
   els.micBtn.disabled = !enabled;
   els.camBtn.disabled = !enabled;
   els.fullscreenBtn.disabled = !enabled;
+  els.pipBtn.disabled = !enabled;
   els.leaveBtn.disabled = !enabled;
 }
 
@@ -567,6 +649,43 @@ async function getLocalMedia() {
   els.localVideo.srcObject = localStream;
 }
 
+// Some browsers (particularly iOS Safari, and Chrome in certain embedded
+// webviews) don't reliably show the permission prompt automatically, or
+// silently fail if the request isn't tied directly to a user tap. This
+// gives people an explicit, unambiguous button to trigger it — and shows
+// a live camera preview immediately as confirmation it worked, before
+// they've even entered a room name.
+async function requestPermissions() {
+  if (mediaReady) return true;
+  els.permBtn.disabled = true;
+  els.permBtn.textContent = 'Requesting…';
+  setBanner('', false);
+
+  try {
+    await getLocalMedia();
+    mediaReady = true;
+    els.permBtn.textContent = 'Camera & mic ready ✓';
+    els.permBtn.classList.add('secondary');
+    return true;
+  } catch (e) {
+    els.permBtn.disabled = false;
+    els.permBtn.textContent = 'Allow camera & microphone';
+
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      setBanner('Camera/mic access is blocked. Open your browser\'s site settings for this page, allow Camera and Microphone, then click the button again.');
+    } else if (e.name === 'NotFoundError' || e.name === 'DevicesNotFoundError') {
+      setBanner('No camera or microphone was found on this device.');
+    } else if (e.name === 'NotReadableError') {
+      setBanner('Camera/mic is already in use by another app. Close it and try again.');
+    } else {
+      setBanner('Could not access camera/mic: ' + e.message);
+    }
+    return false;
+  }
+}
+
+els.permBtn.addEventListener('click', requestPermissions);
+
 // ---------------------------------------------------------------------
 // UI wiring
 // ---------------------------------------------------------------------
@@ -574,11 +693,9 @@ els.joinBtn.addEventListener('click', async () => {
   room = els.roomId.value.trim();
   if (!room) { setBanner('Enter a room name first.'); return; }
 
-  try {
-    await getLocalMedia();
-  } catch (e) {
-    setBanner('Could not access camera/mic: ' + e.message);
-    return;
+  if (!mediaReady) {
+    const ok = await requestPermissions();
+    if (!ok) return;
   }
 
   manuallyLeft = false;
@@ -590,6 +707,7 @@ els.joinBtn.addEventListener('click', async () => {
 
 els.leaveBtn.addEventListener('click', () => {
   manuallyLeft = true;
+  if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   if (statsTimer) clearInterval(statsTimer);
   if (pc) { pc.close(); pc = null; }
   if (ws) { ws.close(); ws = null; }
@@ -600,18 +718,13 @@ els.leaveBtn.addEventListener('click', () => {
   els.leaveBtn.disabled = true;
   setInCallControlsEnabled(false);
   resetControlsUI();
+  mediaReady = false;
+  els.permBtn.disabled = false;
+  els.permBtn.textContent = 'Allow camera & microphone';
+  els.permBtn.classList.remove('secondary');
   currentTierIndex = 0;
   connectionEstablishedAt = null;
   smoothedAvailKbps = null;
   setLinkStatus('idle', 'not connected');
   setBanner('', false);
 });
-
-iceServers: [
-  { urls: 'stun:stun.l.google.com:19302' },
-  {
-    urls: 'turn:free.expressturn.com:3478',   // <-- Added 'turn:' prefix here
-    username: '000000002098864023',
-    credential: 'NzC5d9rM4ZACkoQQgq/dGEXclr0=',
-  },
-]
