@@ -529,6 +529,38 @@ document.addEventListener('fullscreenchange', () => {
   els.fsIconEnter.style.display = isFs ? 'none' : '';
   els.fsIconExit.style.display = isFs ? '' : 'none';
   els.fullscreenBtn.title = isFs ? 'Exit full screen' : 'Full screen';
+  if (isFs) {
+    armControlsAutoHide();
+  } else {
+    clearTimeout(controlsHideTimer);
+    els.callStage.classList.remove('controls-hidden');
+  }
+});
+
+// ---------------------------------------------------------------------
+// Fullscreen controls auto-hide: tap the video to show/hide the controls
+// bar, and it auto-hides after a few seconds of inactivity — same pattern
+// as YouTube/Netflix, so the video isn't permanently covered by buttons.
+// ---------------------------------------------------------------------
+let controlsHideTimer = null;
+
+function armControlsAutoHide() {
+  els.callStage.classList.remove('controls-hidden');
+  clearTimeout(controlsHideTimer);
+  controlsHideTimer = setTimeout(() => {
+    els.callStage.classList.add('controls-hidden');
+  }, 3000);
+}
+
+els.callStage.addEventListener('click', (e) => {
+  if (!els.callStage.classList.contains('is-fullscreen')) return;
+  if (e.target.closest('.ctrl-btn')) return; // let button taps do their own thing
+  if (els.callStage.classList.contains('controls-hidden')) {
+    armControlsAutoHide();
+  } else {
+    clearTimeout(controlsHideTimer);
+    els.callStage.classList.add('controls-hidden');
+  }
 });
 
 // ---------------------------------------------------------------------
@@ -559,6 +591,16 @@ async function togglePiP() {
     if (!els.remoteVideo.srcObject || els.remoteVideo.readyState < 2) {
       setBanner('Video isn\'t ready yet — try again in a moment.');
       return;
+    }
+    // Fullscreen and Picture-in-Picture are mutually exclusive — most
+    // browsers reject the PiP request outright if the document is still
+    // fullscreen. Since the PiP button lives inside the fullscreen
+    // overlay, this was silently failing every time until now.
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => {});
+    }
+    if (els.remoteVideo.paused) {
+      await els.remoteVideo.play().catch(() => {});
     }
     await els.remoteVideo.requestPictureInPicture();
   } catch (e) {

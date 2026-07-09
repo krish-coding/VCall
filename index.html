@@ -173,6 +173,11 @@
     border-radius: 40px;
     z-index: 5;
     width: auto;
+    transition: opacity 0.25s ease;
+  }
+  .call-stage.is-fullscreen.controls-hidden .controls-bar {
+    opacity: 0;
+    pointer-events: none;
   }
   /* Main (non-pip) video fills the screen edge-to-edge in fullscreen but
      is never cropped — letterboxes with black bars instead, so the whole
