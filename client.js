@@ -533,22 +533,16 @@ document.addEventListener('fullscreenchange', () => {
 
 // ---------------------------------------------------------------------
 // Picture-in-Picture: keeps the other person visible in a floating window
-// when the app is minimized or you switch tabs/apps mid-call.
+// when you switch away mid-call.
 //
-// Two mechanisms layered together:
-//   1. `autopictureinpicture` attribute on the video element (set in HTML)
-//      — Chrome/Edge on Android and desktop handle this automatically the
-//      moment the tab/app is backgrounded. No JS needed for this path.
-//   2. A manual fallback here for browsers that need an explicit request
-//      (and Safari, which uses its own webkitSetPresentationMode API
-//      instead of the standard Picture-in-Picture API).
+// Only ever triggered from a direct button tap. Mobile browsers (Chrome
+// Android, Safari iOS) reject requestPictureInPicture() unless it's called
+// synchronously from a real user gesture — calling it from a
+// 'visibilitychange' handler after the app is already backgrounded doesn't
+// count and silently fails, so that path is deliberately not here.
+// `autopictureinpicture` on the <video> tag (see HTML) still gives
+// Chrome-based browsers automatic PiP on backgrounding without needing JS.
 // ---------------------------------------------------------------------
-function pipIsSupported() {
-  return document.pictureInPictureEnabled
-    || (els.remoteVideo.webkitSupportsPresentationMode
-        && typeof els.remoteVideo.webkitSetPresentationMode === 'function');
-}
-
 async function togglePiP() {
   try {
     if (els.remoteVideo.webkitSupportsPresentationMode
@@ -560,11 +554,16 @@ async function togglePiP() {
     }
     if (document.pictureInPictureElement) {
       await document.exitPictureInPicture();
-    } else if (document.pictureInPictureEnabled && els.remoteVideo.srcObject) {
-      await els.remoteVideo.requestPictureInPicture();
+      return;
     }
+    if (!els.remoteVideo.srcObject || els.remoteVideo.readyState < 2) {
+      setBanner('Video isn\'t ready yet — try again in a moment.');
+      return;
+    }
+    await els.remoteVideo.requestPictureInPicture();
   } catch (e) {
     console.warn('Picture-in-Picture failed', e);
+    setBanner('Picture-in-picture isn\'t available on this browser.');
   }
 }
 
@@ -579,30 +578,7 @@ els.remoteVideo.addEventListener('webkitpresentationmodechanged', () => {
   setPipButtonState(els.remoteVideo.webkitPresentationMode === 'picture-in-picture');
 });
 
-// Fallback for browsers that don't auto-PiP via the HTML attribute alone:
-// try to enter PiP the moment the app is backgrounded mid-call, and leave
-// it when you come back. This is best-effort — some browsers only allow
-// requestPictureInPicture() from a direct user gesture and will silently
-// reject it here, which is fine, since the `autopictureinpicture`
-// attribute already covers those browsers natively.
-document.addEventListener('visibilitychange', () => {
-  if (!pc || !els.remoteVideo.srcObject) return; // not in an active call
-
-  if (document.hidden) {
-    if (document.pictureInPictureEnabled && !document.pictureInPictureElement) {
-      els.remoteVideo.requestPictureInPicture().catch(() => {});
-    }
-  } else {
-    if (document.pictureInPictureElement === els.remoteVideo) {
-      document.exitPictureInPicture().catch(() => {});
-    }
-  }
-});
-
 els.pipBtn.addEventListener('click', togglePiP);
-if (!pipIsSupported()) {
-  els.pipBtn.style.display = 'none';
-}
 
 function setInCallControlsEnabled(enabled) {
   els.micBtn.disabled = !enabled;
