@@ -143,9 +143,18 @@
   .call-stage.is-fullscreen {
     max-width: none;
     width: 100vw;
-    height: 100vh;
+    height: 100vh;   /* fallback for older browsers */
+    height: 100dvh;  /* actual visible viewport on mobile — excludes the address bar, unlike 100vh */
     background: #000;
     justify-content: center;
+    /* Works as a full-screen overlay purely via CSS, independent of the
+       native Fullscreen API — that API is unsupported for non-video
+       elements on iPhone Safari and inconsistent on some other mobile
+       browsers, so this can't be the only mechanism. */
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 9999;
   }
   .call-stage.is-fullscreen .videos {
     max-width: none;

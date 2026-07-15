@@ -515,17 +515,9 @@ function toggleCamera() {
   }
 }
 
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    els.callStage.requestFullscreen?.().catch(() => {});
-  } else {
-    document.exitFullscreen?.();
-  }
-}
-
-document.addEventListener('fullscreenchange', () => {
-  const isFs = !!document.fullscreenElement;
+function applyFullscreenVisual(isFs) {
   els.callStage.classList.toggle('is-fullscreen', isFs);
+  document.body.style.overflow = isFs ? 'hidden' : '';
   els.fsIconEnter.style.display = isFs ? 'none' : '';
   els.fsIconExit.style.display = isFs ? '' : 'none';
   els.fullscreenBtn.title = isFs ? 'Exit full screen' : 'Full screen';
@@ -535,7 +527,54 @@ document.addEventListener('fullscreenchange', () => {
     clearTimeout(controlsHideTimer);
     els.callStage.classList.remove('controls-hidden');
   }
-});
+}
+
+function getNativeFullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement
+    || document.mozFullScreenElement || document.msFullscreenElement || null;
+}
+
+function toggleFullscreen() {
+  const goingFullscreen = !els.callStage.classList.contains('is-fullscreen');
+
+  // This CSS-based toggle is what actually guarantees fullscreen works —
+  // it needs no browser permission and no API support.
+  applyFullscreenVisual(goingFullscreen);
+
+  // Best-effort bonus on top: also request real browser fullscreen where
+  // supported, which additionally hides the address bar. iPhone Safari
+  // doesn't support this for non-video elements at all (only a bare
+  // <video> tag), and a few other mobile browsers are inconsistent — when
+  // unsupported this just silently does nothing, which is fine, since the
+  // CSS fullscreen above already covers the whole screen regardless.
+  try {
+    const requestFs = els.callStage.requestFullscreen
+      || els.callStage.webkitRequestFullscreen
+      || els.callStage.mozRequestFullScreen
+      || els.callStage.msRequestFullscreen;
+    const exitFs = document.exitFullscreen
+      || document.webkitExitFullscreen
+      || document.mozCancelFullScreen
+      || document.msExitFullscreen;
+
+    if (goingFullscreen && requestFs) {
+      requestFs.call(els.callStage)?.catch?.(() => {});
+    } else if (!goingFullscreen && getNativeFullscreenElement() && exitFs) {
+      exitFs.call(document)?.catch?.(() => {});
+    }
+  } catch (e) { /* native fullscreen unsupported here — CSS fallback already applied */ }
+}
+
+// Safety net: if native fullscreen gets exited by something other than our
+// button (Esc key, Android back gesture, browser UI), keep our CSS state
+// in sync with it rather than leaving stale full-screen styling behind.
+function handleNativeFullscreenChange() {
+  if (!getNativeFullscreenElement() && els.callStage.classList.contains('is-fullscreen')) {
+    applyFullscreenVisual(false);
+  }
+}
+['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange']
+  .forEach((evt) => document.addEventListener(evt, handleNativeFullscreenChange));
 
 // ---------------------------------------------------------------------
 // Fullscreen controls auto-hide: tap the video to show/hide the controls
