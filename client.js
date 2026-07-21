@@ -544,37 +544,56 @@ function toggleCamera() {
 // ponytail: camera switch releases hardware track, tries exact/deviceId/soft constraints, and updates mirror state only on real back camera
 let currentFacingMode = 'user';
 
-// ponytail: screen.orientation is more reliable than viewport size on mobile
-function isDevicePortrait() {
-  const ot = screen.orientation?.type || '';
-  if (ot) return ot.startsWith('portrait');
-  return window.innerHeight > window.innerWidth;
-}
-
 function getVideoConstraints(extra = {}) {
-  const portrait = isDevicePortrait();
+  // ponytail: NO width/height/aspectRatio — explicit dimension hints tell some
+  // mobile browsers "I'm handling orientation" and they skip rotation, giving
+  // raw landscape sensor output. Without hints the browser captures naturally
+  // and applies rotation metadata so portrait phones send portrait video.
+  // ceiling: camera picks its own resolution; quality tiers handle downscaling.
   return {
     ...extra,
-    width: { ideal: portrait ? 720 : 1280 },
-    height: { ideal: portrait ? 1280 : 720 },
-    // ponytail: aspectRatio is respected by mobile browsers that ignore w/h ideals
-    aspectRatio: portrait ? { ideal: 9 / 16 } : { ideal: 16 / 9 },
     frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
   };
 }
 
-// ponytail: re-apply video constraints when device rotates so sent resolution matches new orientation
-let wasPortrait = isDevicePortrait();
-function handleOrientationChange() {
-  const portrait = isDevicePortrait();
+// ponytail: on orientation change, re-request camera — applyConstraints can't
+// change orientation on an already-open track on most mobile browsers.
+let wasPortrait = window.innerHeight > window.innerWidth;
+async function handleOrientationChange() {
+  const portrait = window.innerHeight > window.innerWidth;
   if (portrait === wasPortrait) return;
   wasPortrait = portrait;
   if (!localStream || userVideoOff) return;
-  const track = localStream.getVideoTracks()[0];
-  if (track) track.applyConstraints(getVideoConstraints({ facingMode: currentFacingMode })).catch(() => {});
+  const oldTrack = localStream.getVideoTracks()[0];
+  if (oldTrack) { localStream.removeTrack(oldTrack); oldTrack.stop(); }
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({
+      video: getVideoConstraints({ facingMode: currentFacingMode }),
+    });
+    const newTrack = s.getVideoTracks()[0];
+    if (!newTrack) return;
+    localStream.addTrack(newTrack);
+    if (pc) {
+      const sender = pc.getSenders().find(x => x.track?.kind === 'video');
+      if (sender) await sender.replaceTrack(newTrack);
+    }
+    els.localVideo.srcObject = localStream;
+  } catch { /* camera re-request failed, keep going without video */ }
 }
 if (screen.orientation) screen.orientation.addEventListener('change', handleOrientationChange);
 window.addEventListener('resize', handleOrientationChange);
+
+// ponytail: set CSS aspect-ratio from actual video dimensions so the container
+// always matches the real video shape (portrait or landscape), regardless of
+// what constraints or rotation metadata the browser used.
+function trackVideoShape(videoEl) {
+  videoEl.addEventListener('resize', () => {
+    const w = videoEl.videoWidth, h = videoEl.videoHeight;
+    if (w && h) videoEl.style.aspectRatio = `${w} / ${h}`;
+  });
+}
+trackVideoShape(els.localVideo);
+trackVideoShape(els.remoteVideo);
 
 async function switchCamera() {
   if (userVideoOff || !localStream) return;
@@ -864,23 +883,6 @@ async function getLocalMedia() {
     video: getVideoConstraints({ facingMode: currentFacingMode }),
   };
   localStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-  // ponytail: if phone is portrait but camera gave landscape, try forcing portrait
-  // ceiling: fails silently on devices that truly can't do portrait — they send landscape
-  if (isDevicePortrait()) {
-    const track = localStream.getVideoTracks()[0];
-    const s = track?.getSettings();
-    if (s && s.width > s.height) {
-      try {
-        await track.applyConstraints({
-          aspectRatio: { exact: 9 / 16 },
-          width: { ideal: 720 },
-          height: { ideal: 1280 },
-        });
-      } catch { /* can't force portrait, live with what we have */ }
-    }
-  }
-
   els.localVideo.srcObject = localStream;
 }
 
