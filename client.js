@@ -41,6 +41,7 @@ const els = {
   statAvailBw: $('statAvailBw'),
   micBtn: $('micBtn'),
   camBtn: $('camBtn'),
+  switchCamBtn: $('switchCamBtn'),
   fullscreenBtn: $('fullscreenBtn'),
   pipBtn: $('pipBtn'),
   videosContainer: $('videosContainer'),
@@ -515,6 +516,55 @@ function toggleCamera() {
   }
 }
 
+// ponytail: camera switch uses RTCRtpSender.replaceTrack without full ICE renegotiation
+let currentFacingMode = 'user';
+
+async function switchCamera() {
+  if (userVideoOff || !localStream) return;
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  els.localVideo.classList.toggle('unmirrored', currentFacingMode !== 'user');
+
+  try {
+    let newStream;
+    try {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { exact: currentFacingMode },
+          width: { ideal: CAPTURE.width },
+          height: { ideal: CAPTURE.height },
+          frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
+        },
+      });
+    } catch {
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: currentFacingMode,
+          width: { ideal: CAPTURE.width },
+          height: { ideal: CAPTURE.height },
+          frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
+        },
+      });
+    }
+
+    const newTrack = newStream.getVideoTracks()[0];
+    const oldTrack = localStream.getVideoTracks()[0];
+    if (oldTrack) {
+      localStream.removeTrack(oldTrack);
+      oldTrack.stop();
+    }
+    if (newTrack) {
+      localStream.addTrack(newTrack);
+      if (pc) {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+        if (sender) await sender.replaceTrack(newTrack);
+      }
+    }
+    els.localVideo.srcObject = localStream;
+  } catch (e) {
+    console.warn('Camera switch failed:', e);
+  }
+}
+
 function applyFullscreenVisual(isFs) {
   els.callStage.classList.toggle('is-fullscreen', isFs);
   document.body.style.overflow = isFs ? 'hidden' : '';
@@ -664,6 +714,7 @@ els.pipBtn.addEventListener('click', togglePiP);
 function setInCallControlsEnabled(enabled) {
   els.micBtn.disabled = !enabled;
   els.camBtn.disabled = !enabled;
+  els.switchCamBtn.disabled = !enabled;
   els.fullscreenBtn.disabled = !enabled;
   els.pipBtn.disabled = !enabled;
   els.leaveBtn.disabled = !enabled;
@@ -683,6 +734,7 @@ function resetControlsUI() {
 
 els.micBtn.addEventListener('click', toggleMic);
 els.camBtn.addEventListener('click', toggleCamera);
+els.switchCamBtn.addEventListener('click', switchCamera);
 els.fullscreenBtn.addEventListener('click', toggleFullscreen);
 
 // ---------------------------------------------------------------------
@@ -697,6 +749,7 @@ async function getLocalMedia() {
       channelCount: 1, // mono — halves audio bandwidth vs stereo, inaudible difference on calls
     },
     video: {
+      facingMode: currentFacingMode,
       width: { ideal: CAPTURE.width },
       height: { ideal: CAPTURE.height },
       frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
@@ -723,6 +776,7 @@ async function requestPermissions() {
     mediaReady = true;
     els.permBtn.textContent = 'Camera & mic ready ✓';
     els.permBtn.classList.add('secondary');
+    els.switchCamBtn.disabled = false;
     return true;
   } catch (e) {
     els.permBtn.disabled = false;

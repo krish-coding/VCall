@@ -80,6 +80,8 @@
     border: 1px solid var(--border);
   }
   video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #localVideo { transform: scaleX(-1); }
+  #localVideo.unmirrored { transform: none; }
   .label {
     position: absolute; bottom: 6px; left: 8px;
     font-size: 12px; background: rgba(0,0,0,0.6);
@@ -264,6 +266,14 @@
         <line x1="1" y1="1" x2="23" y2="23"/>
         <path d="M17 17H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/>
         <path d="M9 5h5l2 3h5v9.34"/>
+      </svg>
+    </button>
+
+    <button class="ctrl-btn" id="switchCamBtn" disabled title="Switch camera">
+      <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 4v6h-6"/>
+        <path d="M1 20v-6h6"/>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
       </svg>
     </button>
 
