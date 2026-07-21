@@ -41,7 +41,6 @@ const els = {
   statAvailBw: $('statAvailBw'),
   micBtn: $('micBtn'),
   camBtn: $('camBtn'),
-  switchCamBtn: $('switchCamBtn'),
   fullscreenBtn: $('fullscreenBtn'),
   pipBtn: $('pipBtn'),
   videosContainer: $('videosContainer'),
@@ -101,17 +100,16 @@ const CONFIG = {
 
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.services.mozilla.com' },
+    {
+      urls: 'turn:free.expressturn.com:3478',
+      username: '000000002098864023',
+      credential: 'NzC5d9rM4ZACkoQQgq/dGEXclr0=',
+    },
   ],
 };
 
 let ws = null;
 let pc = null;
-let pendingCandidates = [];
 let localStream = null;
 let role = null; // 'offerer' | 'answerer'
 let room = null;
@@ -137,29 +135,16 @@ function setBanner(text, show = true) {
 
 function setLinkStatus(state, text) {
   // state: 'good' | 'warn' | 'bad' | 'idle'
-  if (els.linkDot) els.linkDot.className = 'status-dot' + (state !== 'idle' ? ' ' + state : '');
-  if (els.connDot) els.connDot.className = 'status-dot' + (state !== 'idle' ? ' ' + state : '');
-  if (els.linkText) els.linkText.textContent = text;
-  if (els.connLabel) els.connLabel.textContent = text;
-}
-
-async function flushPendingCandidates() {
-  if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) return;
-  while (pendingCandidates.length > 0) {
-    const cand = pendingCandidates.shift();
-    try { await pc.addIceCandidate(cand); } catch (e) {}
-  }
+  els.linkDot.className = 'status-dot' + (state !== 'idle' ? ' ' + state : '');
+  els.connDot.className = 'status-dot' + (state !== 'idle' ? ' ' + state : '');
+  els.linkText.textContent = text;
+  els.connLabel.textContent = text;
 }
 
 // ---------------------------------------------------------------------
 // Signaling (WebSocket) with reconnect-with-backoff
 // ---------------------------------------------------------------------
 function connectSignaling() {
-  if (ws) {
-    try { ws.close(); } catch (e) {}
-    ws = null;
-  }
-
   const url = CONFIG.signalingUrl;
   ws = new WebSocket(url);
 
@@ -182,43 +167,32 @@ function connectSignaling() {
         break;
 
       case 'ready':
-        if (pc) { try { pc.close(); } catch (e) {} pc = null; }
-        pendingCandidates = [];
         await ensurePeerConnection();
         if (role === 'offerer') await makeOffer();
         break;
 
       case 'offer':
-        if (pc) { try { pc.close(); } catch (e) {} pc = null; }
         await ensurePeerConnection();
         await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-        await flushPendingCandidates();
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         applyTier(currentTierIndex); // must run after local description exists
-        wsSend({ type: 'answer', sdp: pc.localDescription });
+        ws.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription }));
         break;
 
       case 'answer':
-        if (pc) {
-          await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-          await flushPendingCandidates();
-        }
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
         break;
 
       case 'ice-candidate':
         if (msg.candidate) {
-          if (pc && pc.remoteDescription && pc.remoteDescription.type) {
-            try { await pc.addIceCandidate(msg.candidate); } catch (e) {}
-          } else {
-            pendingCandidates.push(msg.candidate);
-          }
+          try { await pc.addIceCandidate(msg.candidate); } catch (e) { /* ignore */ }
         }
         break;
 
       case 'peer-left':
-      case 'bye':
-        leaveCall('The call was ended by the other user.', false);
+        setLinkStatus('bad', 'other peer disconnected');
+        setBanner('The other person disconnected. Waiting for them to rejoin…');
         break;
     }
   };
@@ -333,7 +307,7 @@ function applyTier(tierIndex) {
     sender.setParameters(params).catch((e) => console.warn('setParameters failed', e));
   });
 
-  if (els.statTier) els.statTier.textContent = tier.label;
+  els.statTier.textContent = tier.label;
 }
 
 // ---------------------------------------------------------------------
@@ -398,13 +372,13 @@ async function pollStats() {
   }
 
   // --- update UI ---
-  if (els.statVideo) els.statVideo.textContent = videoEnabled ? 'on' : 'off (saving bandwidth)';
-  if (els.statAudioKbps) els.statAudioKbps.textContent = audioKbps ? `${audioKbps.toFixed(0)} kbps` : '–';
-  if (els.statVideoKbps) els.statVideoKbps.textContent = videoKbps ? `${videoKbps.toFixed(0)} kbps` : '–';
-  if (els.statLoss) els.statLoss.textContent = `${lossPct.toFixed(1)}%`;
-  if (els.statRtt) els.statRtt.textContent = rtt != null ? `${rtt.toFixed(0)} ms` : '–';
-  if (els.statJitter) els.statJitter.textContent = jitterMs != null ? `${jitterMs.toFixed(0)} ms` : '–';
-  if (els.statAvailBw) els.statAvailBw.textContent = smoothedAvailKbps != null ? `${smoothedAvailKbps.toFixed(0)} kbps` : '–';
+  els.statVideo.textContent = videoEnabled ? 'on' : 'off (saving bandwidth)';
+  els.statAudioKbps.textContent = audioKbps ? `${audioKbps.toFixed(0)} kbps` : '–';
+  els.statVideoKbps.textContent = videoKbps ? `${videoKbps.toFixed(0)} kbps` : '–';
+  els.statLoss.textContent = `${lossPct.toFixed(1)}%`;
+  els.statRtt.textContent = rtt != null ? `${rtt.toFixed(0)} ms` : '–';
+  els.statJitter.textContent = jitterMs != null ? `${jitterMs.toFixed(0)} ms` : '–';
+  els.statAvailBw.textContent = smoothedAvailKbps != null ? `${smoothedAvailKbps.toFixed(0)} kbps` : '–';
 
   // If the user manually turned their camera off, that takes priority —
   // don't let the adaptive network logic try to re-enable it underneath them.
@@ -539,124 +513,6 @@ function toggleCamera() {
     setVideoEnabled(true);
     if (pc) applyTier(currentTierIndex);
   }
-}
-
-// ponytail: camera switch releases hardware track, tries exact/deviceId/soft constraints, and updates mirror state only on real back camera
-let currentFacingMode = 'user';
-
-function getVideoConstraints(extra = {}) {
-  const isPortrait = window.innerHeight > window.innerWidth;
-  const idealWidth = isPortrait ? 720 : 1280;
-  const idealHeight = isPortrait ? 1280 : 720;
-
-  return {
-    ...extra,
-    width: { ideal: idealWidth },
-    height: { ideal: idealHeight },
-    frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
-  };
-}
-
-async function switchCamera() {
-  if (userVideoOff || !localStream) return;
-  const oldTrack = localStream.getVideoTracks()[0];
-  const targetFacing = currentFacingMode === 'user' ? 'environment' : 'user';
-
-  // Stop old track first to release camera hardware lock on mobile devices
-  if (oldTrack) {
-    localStream.removeTrack(oldTrack);
-    oldTrack.stop();
-  }
-
-  let newStream = null;
-  let achievedFacing = targetFacing;
-
-  // 1. Try exact facingMode
-  try {
-    newStream = await navigator.mediaDevices.getUserMedia({
-      video: getVideoConstraints({ facingMode: { exact: targetFacing } }),
-    });
-  } catch {}
-
-  // 2. Try matching deviceId from enumerateDevices if exact facingMode failed
-  if (!newStream) {
-    try {
-      const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
-      let targetDevice;
-      if (targetFacing === 'environment') {
-        targetDevice = devices.find((d) => {
-          const l = (d.label || '').toLowerCase();
-          return l.includes('back') || l.includes('rear') || l.includes('environment') || l.includes('0, facing back') || l.includes('camera 1');
-        });
-      } else {
-        targetDevice = devices.find((d) => {
-          const l = (d.label || '').toLowerCase();
-          return l.includes('front') || l.includes('user') || l.includes('facing front') || l.includes('camera 0');
-        });
-      }
-      // If specific label not matched but multiple devices exist, pick the alternate device
-      if (!targetDevice && devices.length > 1 && oldTrack) {
-        const oldId = oldTrack.getSettings()?.deviceId;
-        targetDevice = devices.find((d) => d.deviceId !== oldId) || devices[0];
-      }
-
-      if (targetDevice && targetDevice.deviceId) {
-        newStream = await navigator.mediaDevices.getUserMedia({
-          video: getVideoConstraints({ deviceId: { exact: targetDevice.deviceId } }),
-        });
-      }
-    } catch {}
-  }
-
-  // 3. Try soft facingMode constraint
-  if (!newStream) {
-    try {
-      newStream = await navigator.mediaDevices.getUserMedia({
-        video: getVideoConstraints({ facingMode: targetFacing }),
-      });
-    } catch {}
-  }
-
-  // 4. Ultimate fallback: restore previous camera (or default camera)
-  if (!newStream) {
-    try {
-      achievedFacing = currentFacingMode;
-      newStream = await navigator.mediaDevices.getUserMedia({
-        video: getVideoConstraints({ facingMode: currentFacingMode }),
-      });
-    } catch (e) {
-      console.warn('Could not restore camera after switch failure:', e);
-      return;
-    }
-  }
-
-  const newTrack = newStream.getVideoTracks()[0];
-  if (!newTrack) return;
-
-  localStream.addTrack(newTrack);
-
-  if (pc) {
-    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-    if (sender) await sender.replaceTrack(newTrack);
-  }
-
-  const settings = newTrack.getSettings();
-  const label = (newTrack.label || '').toLowerCase();
-
-  let isBack = false;
-  if (settings.facingMode) {
-    isBack = settings.facingMode === 'environment';
-  } else if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
-    isBack = true;
-  } else if (label.includes('front') || label.includes('user')) {
-    isBack = false;
-  } else {
-    isBack = achievedFacing === 'environment';
-  }
-
-  currentFacingMode = isBack ? 'environment' : 'user';
-  els.localVideo.classList.toggle('unmirrored', isBack);
-  els.localVideo.srcObject = localStream;
 }
 
 function applyFullscreenVisual(isFs) {
@@ -808,7 +664,6 @@ els.pipBtn.addEventListener('click', togglePiP);
 function setInCallControlsEnabled(enabled) {
   els.micBtn.disabled = !enabled;
   els.camBtn.disabled = !enabled;
-  els.switchCamBtn.disabled = !enabled;
   els.fullscreenBtn.disabled = !enabled;
   els.pipBtn.disabled = !enabled;
   els.leaveBtn.disabled = !enabled;
@@ -828,7 +683,6 @@ function resetControlsUI() {
 
 els.micBtn.addEventListener('click', toggleMic);
 els.camBtn.addEventListener('click', toggleCamera);
-els.switchCamBtn.addEventListener('click', switchCamera);
 els.fullscreenBtn.addEventListener('click', toggleFullscreen);
 
 // ---------------------------------------------------------------------
@@ -842,7 +696,11 @@ async function getLocalMedia() {
       autoGainControl: true,
       channelCount: 1, // mono — halves audio bandwidth vs stereo, inaudible difference on calls
     },
-    video: getVideoConstraints({ facingMode: currentFacingMode }),
+    video: {
+      width: { ideal: CAPTURE.width },
+      height: { ideal: CAPTURE.height },
+      frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
+    },
   };
   localStream = await navigator.mediaDevices.getUserMedia(constraints);
   els.localVideo.srcObject = localStream;
@@ -865,7 +723,6 @@ async function requestPermissions() {
     mediaReady = true;
     els.permBtn.textContent = 'Camera & mic ready ✓';
     els.permBtn.classList.add('secondary');
-    els.switchCamBtn.disabled = false;
     return true;
   } catch (e) {
     els.permBtn.disabled = false;
@@ -905,27 +762,13 @@ els.joinBtn.addEventListener('click', async () => {
   connectSignaling();
 });
 
-function leaveCall(bannerMsg = '', notifyServer = true) {
+els.leaveBtn.addEventListener('click', () => {
   manuallyLeft = true;
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   if (statsTimer) clearInterval(statsTimer);
-  if (pc) { try { pc.close(); } catch (e) {} pc = null; }
-
-  if (ws) {
-    const socket = ws;
-    ws = null;
-    if (notifyServer && socket.readyState === WebSocket.OPEN) {
-      try { socket.send(JSON.stringify({ type: 'bye', room })); } catch (e) {}
-      setTimeout(() => { try { socket.close(); } catch (e) {} }, 100);
-    } else {
-      try { socket.close(); } catch (e) {}
-    }
-  }
-
-  if (localStream) {
-    localStream.getTracks().forEach((t) => t.stop());
-    localStream = null;
-  }
+  if (pc) { pc.close(); pc = null; }
+  if (ws) { ws.close(); ws = null; }
+  if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
   els.localVideo.srcObject = null;
   els.remoteVideo.srcObject = null;
   els.joinBtn.disabled = false;
@@ -940,21 +783,5 @@ function leaveCall(bannerMsg = '', notifyServer = true) {
   connectionEstablishedAt = null;
   smoothedAvailKbps = null;
   setLinkStatus('idle', 'not connected');
-  if (bannerMsg) {
-    setBanner(bannerMsg, true);
-  } else {
-    setBanner('', false);
-  }
-}
-
-els.leaveBtn.addEventListener('click', () => {
-  leaveCall('', true);
+  setBanner('', false);
 });
-
-const sendByeOnUnload = () => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try { ws.send(JSON.stringify({ type: 'bye', room })); } catch (e) {}
-  }
-};
-window.addEventListener('beforeunload', sendByeOnUnload);
-window.addEventListener('pagehide', sendByeOnUnload);
