@@ -76,10 +76,10 @@
     background: #000;
     border-radius: 10px;
     overflow: hidden;
-    aspect-ratio: 4/3;
+    aspect-ratio: 16/9;
     border: 1px solid var(--border);
   }
-  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
   #localVideo { transform: scaleX(-1); }
   #localVideo.unmirrored { transform: none; }
   .label {
@@ -95,11 +95,6 @@
   .status-dot.warn { background: var(--warn); }
   .status-dot.bad { background: var(--bad); animation: pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .stats {
-    font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin-top: 10px;
-  }
-  .stats b { color: var(--text); }
   .banner {
     font-size: 13px; padding: 8px 12px; border-radius: 8px;
     background: #2a2415; color: var(--warn); display: none; margin-top: 10px;
@@ -149,10 +144,6 @@
     height: 100dvh;  /* actual visible viewport on mobile — excludes the address bar, unlike 100vh */
     background: #000;
     justify-content: center;
-    /* Works as a full-screen overlay purely via CSS, independent of the
-       native Fullscreen API — that API is unsupported for non-video
-       elements on iPhone Safari and inconsistent on some other mobile
-       browsers, so this can't be the only mechanism. */
     position: fixed;
     top: 0;
     left: 0;
@@ -168,7 +159,7 @@
   .call-stage.is-fullscreen .video-wrap { border-radius: 0; border: none; aspect-ratio: unset; }
   .call-stage.is-fullscreen #localVideo { display: none; }
   .call-stage.is-fullscreen .video-wrap:first-child {
-    position: absolute; width: 160px; aspect-ratio: 4/3; bottom: 90px; right: 16px;
+    position: absolute; width: 160px; aspect-ratio: 16/9; bottom: 90px; right: 16px;
     border-radius: 10px; border: 1px solid var(--border); z-index: 2;
   }
   .call-stage.is-fullscreen .video-wrap:first-child #localVideo { display: block; }
@@ -190,10 +181,6 @@
     opacity: 0;
     pointer-events: none;
   }
-  /* Main (non-pip) video fills the screen edge-to-edge in fullscreen but
-     is never cropped — letterboxes with black bars instead, so the whole
-     frame stays visible regardless of the video's or screen's orientation
-     (portrait phone video on a landscape screen, etc). */
   .call-stage.is-fullscreen .video-wrap:last-child video {
     object-fit: contain;
     background: #000;
@@ -216,7 +203,6 @@
 <body>
 
   <h1>VCall</h1>
-<div class="sub">Tuned for slow / unstable networks — audio is prioritized over video automatically.</div>
 
 <div class="panel">
   <div class="row">
@@ -305,23 +291,6 @@
         <line x1="2" y1="2" x2="22" y2="22"/>
       </svg>
     </button>
-  </div>
-</div>
-
-<div class="panel">
-  <div class="row">
-    <span class="status-dot" id="linkDot"></span>
-    <span id="linkText" style="font-size:13px;color:var(--muted)">Not connected</span>
-  </div>
-  <div class="stats" id="statsBox">
-    <div>Video: <b id="statVideo">off</b></div>
-    <div>Quality: <b id="statTier">–</b></div>
-    <div>Available bandwidth: <b id="statAvailBw">–</b></div>
-    <div>Audio bitrate: <b id="statAudioKbps">–</b></div>
-    <div>Video bitrate: <b id="statVideoKbps">–</b></div>
-    <div>Packet loss: <b id="statLoss">–</b></div>
-    <div>RTT: <b id="statRtt">–</b></div>
-    <div>Jitter buffer: <b id="statJitter">–</b></div>
   </div>
 </div>
 

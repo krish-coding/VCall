@@ -136,10 +136,10 @@ function setBanner(text, show = true) {
 
 function setLinkStatus(state, text) {
   // state: 'good' | 'warn' | 'bad' | 'idle'
-  els.linkDot.className = 'status-dot' + (state !== 'idle' ? ' ' + state : '');
-  els.connDot.className = 'status-dot' + (state !== 'idle' ? ' ' + state : '');
-  els.linkText.textContent = text;
-  els.connLabel.textContent = text;
+  if (els.linkDot) els.linkDot.className = 'status-dot' + (state !== 'idle' ? ' ' + state : '');
+  if (els.connDot) els.connDot.className = 'status-dot' + (state !== 'idle' ? ' ' + state : '');
+  if (els.linkText) els.linkText.textContent = text;
+  if (els.connLabel) els.connLabel.textContent = text;
 }
 
 // ---------------------------------------------------------------------
@@ -308,7 +308,7 @@ function applyTier(tierIndex) {
     sender.setParameters(params).catch((e) => console.warn('setParameters failed', e));
   });
 
-  els.statTier.textContent = tier.label;
+  if (els.statTier) els.statTier.textContent = tier.label;
 }
 
 // ---------------------------------------------------------------------
@@ -373,13 +373,13 @@ async function pollStats() {
   }
 
   // --- update UI ---
-  els.statVideo.textContent = videoEnabled ? 'on' : 'off (saving bandwidth)';
-  els.statAudioKbps.textContent = audioKbps ? `${audioKbps.toFixed(0)} kbps` : '–';
-  els.statVideoKbps.textContent = videoKbps ? `${videoKbps.toFixed(0)} kbps` : '–';
-  els.statLoss.textContent = `${lossPct.toFixed(1)}%`;
-  els.statRtt.textContent = rtt != null ? `${rtt.toFixed(0)} ms` : '–';
-  els.statJitter.textContent = jitterMs != null ? `${jitterMs.toFixed(0)} ms` : '–';
-  els.statAvailBw.textContent = smoothedAvailKbps != null ? `${smoothedAvailKbps.toFixed(0)} kbps` : '–';
+  if (els.statVideo) els.statVideo.textContent = videoEnabled ? 'on' : 'off (saving bandwidth)';
+  if (els.statAudioKbps) els.statAudioKbps.textContent = audioKbps ? `${audioKbps.toFixed(0)} kbps` : '–';
+  if (els.statVideoKbps) els.statVideoKbps.textContent = videoKbps ? `${videoKbps.toFixed(0)} kbps` : '–';
+  if (els.statLoss) els.statLoss.textContent = `${lossPct.toFixed(1)}%`;
+  if (els.statRtt) els.statRtt.textContent = rtt != null ? `${rtt.toFixed(0)} ms` : '–';
+  if (els.statJitter) els.statJitter.textContent = jitterMs != null ? `${jitterMs.toFixed(0)} ms` : '–';
+  if (els.statAvailBw) els.statAvailBw.textContent = smoothedAvailKbps != null ? `${smoothedAvailKbps.toFixed(0)} kbps` : '–';
 
   // If the user manually turned their camera off, that takes priority —
   // don't let the adaptive network logic try to re-enable it underneath them.
