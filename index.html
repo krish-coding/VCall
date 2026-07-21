@@ -76,7 +76,7 @@
     background: #000;
     border-radius: 10px;
     overflow: hidden;
-    aspect-ratio: 4/3;
+    aspect-ratio: 16/9;
     border: 1px solid var(--border);
   }
   video { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -90,7 +90,7 @@
       gap: 12px;
     }
     .video-wrap {
-      aspect-ratio: 9/16;
+      aspect-ratio: 16/9;
       width: 100%;
     }
   }
@@ -171,8 +171,17 @@
   .call-stage.is-fullscreen .video-wrap { border-radius: 0; border: none; aspect-ratio: unset; }
   .call-stage.is-fullscreen #localVideo { display: none; }
   .call-stage.is-fullscreen .video-wrap:first-child {
-    position: absolute; width: 120px; aspect-ratio: 9/16; bottom: 90px; right: 16px;
-    border-radius: 10px; border: 1px solid var(--border); z-index: 2;
+    position: absolute; width: 110px; aspect-ratio: 9/16; bottom: 90px; right: 16px;
+    border-radius: 12px; border: 1px solid var(--border); z-index: 2; overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  .call-stage.is-fullscreen .video-wrap:first-child #localVideo {
+    display: block;
+    object-fit: cover;
+    transform: scaleX(-1) scale(1.3);
+  }
+  .call-stage.is-fullscreen .video-wrap:first-child #localVideo.unmirrored {
+    transform: scale(1.3);
   }
   .call-stage.is-fullscreen .video-wrap:first-child #localVideo { display: block; }
   .call-stage.is-fullscreen .controls-bar {
