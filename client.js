@@ -516,7 +516,7 @@ function toggleCamera() {
   }
 }
 
-// ponytail: camera switch cycles enumerated video devices or toggles facingMode, replacing track via RTCRtpSender
+// ponytail: camera switch releases hardware track, tries exact/deviceId/soft constraints, and updates mirror state only on real back camera
 let currentFacingMode = 'user';
 
 async function switchCamera() {
@@ -524,64 +524,117 @@ async function switchCamera() {
   const oldTrack = localStream.getVideoTracks()[0];
   const targetFacing = currentFacingMode === 'user' ? 'environment' : 'user';
 
+  // Stop old track first to release camera hardware lock on mobile devices
+  if (oldTrack) {
+    localStream.removeTrack(oldTrack);
+    oldTrack.stop();
+  }
+
+  let newStream = null;
+  let achievedFacing = targetFacing;
+
+  // 1. Try exact facingMode
   try {
-    const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
-    let videoConstraint;
+    newStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { exact: targetFacing },
+        width: { ideal: CAPTURE.width },
+        height: { ideal: CAPTURE.height },
+      },
+    });
+  } catch {}
 
-    if (devices.length > 1 && oldTrack) {
-      const currentDeviceId = oldTrack.getSettings()?.deviceId;
-      const currentIdx = devices.findIndex((d) => d.deviceId === currentDeviceId);
-      const nextDevice = devices[(currentIdx + 1) % devices.length];
-      videoConstraint = { deviceId: { exact: nextDevice.deviceId } };
-    } else {
-      videoConstraint = { facingMode: { exact: targetFacing } };
-    }
-
-    let newStream;
+  // 2. Try matching deviceId from enumerateDevices if exact facingMode failed
+  if (!newStream) {
     try {
-      newStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          ...videoConstraint,
-          width: { ideal: CAPTURE.width },
-          height: { ideal: CAPTURE.height },
-          frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
-        },
-      });
-    } catch {
+      const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+      let targetDevice;
+      if (targetFacing === 'environment') {
+        targetDevice = devices.find((d) => {
+          const l = (d.label || '').toLowerCase();
+          return l.includes('back') || l.includes('rear') || l.includes('environment') || l.includes('0, facing back') || l.includes('camera 1');
+        });
+      } else {
+        targetDevice = devices.find((d) => {
+          const l = (d.label || '').toLowerCase();
+          return l.includes('front') || l.includes('user') || l.includes('facing front') || l.includes('camera 0');
+        });
+      }
+      // If specific label not matched but multiple devices exist, pick the alternate device
+      if (!targetDevice && devices.length > 1 && oldTrack) {
+        const oldId = oldTrack.getSettings()?.deviceId;
+        targetDevice = devices.find((d) => d.deviceId !== oldId) || devices[0];
+      }
+
+      if (targetDevice && targetDevice.deviceId) {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: targetDevice.deviceId },
+            width: { ideal: CAPTURE.width },
+            height: { ideal: CAPTURE.height },
+          },
+        });
+      }
+    } catch {}
+  }
+
+  // 3. Try soft facingMode constraint
+  if (!newStream) {
+    try {
       newStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: targetFacing,
           width: { ideal: CAPTURE.width },
           height: { ideal: CAPTURE.height },
-          frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
         },
       });
-    }
-
-    const newTrack = newStream.getVideoTracks()[0];
-    if (!newTrack) return;
-
-    if (oldTrack) {
-      localStream.removeTrack(oldTrack);
-      oldTrack.stop();
-    }
-    localStream.addTrack(newTrack);
-
-    if (pc) {
-      const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-      if (sender) await sender.replaceTrack(newTrack);
-    }
-
-    const settings = newTrack.getSettings();
-    const label = (newTrack.label || '').toLowerCase();
-    const isBack = settings.facingMode === 'environment' || label.includes('back') || label.includes('rear') || targetFacing === 'environment';
-
-    currentFacingMode = isBack ? 'environment' : 'user';
-    els.localVideo.classList.toggle('unmirrored', isBack);
-    els.localVideo.srcObject = localStream;
-  } catch (e) {
-    console.warn('Camera switch failed:', e);
+    } catch {}
   }
+
+  // 4. Ultimate fallback: restore previous camera (or default camera)
+  if (!newStream) {
+    try {
+      achievedFacing = currentFacingMode;
+      newStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: currentFacingMode,
+          width: { ideal: CAPTURE.width },
+          height: { ideal: CAPTURE.height },
+        },
+      });
+    } catch (e) {
+      console.warn('Could not restore camera after switch failure:', e);
+      return;
+    }
+  }
+
+  const newTrack = newStream.getVideoTracks()[0];
+  if (!newTrack) return;
+
+  localStream.addTrack(newTrack);
+
+  if (pc) {
+    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+    if (sender) await sender.replaceTrack(newTrack);
+  }
+
+  const settings = newTrack.getSettings();
+  const label = (newTrack.label || '').toLowerCase();
+
+  let isBack = false;
+  if (settings.facingMode) {
+    isBack = settings.facingMode === 'environment';
+  } else if (label.includes('back') || label.includes('rear') || label.includes('environment')) {
+    isBack = true;
+  } else if (label.includes('front') || label.includes('user')) {
+    isBack = false;
+  } else {
+    isBack = achievedFacing === 'environment';
+  }
+
+  currentFacingMode = isBack ? 'environment' : 'user';
+  els.localVideo.classList.toggle('unmirrored', isBack);
+  els.localVideo.srcObject = localStream;
 }
 
 function applyFullscreenVisual(isFs) {
