@@ -544,6 +544,19 @@ function toggleCamera() {
 // ponytail: camera switch releases hardware track, tries exact/deviceId/soft constraints, and updates mirror state only on real back camera
 let currentFacingMode = 'user';
 
+function getVideoConstraints(extra = {}) {
+  const isPortrait = window.innerHeight > window.innerWidth;
+  const idealWidth = isPortrait ? 720 : 1280;
+  const idealHeight = isPortrait ? 1280 : 720;
+
+  return {
+    ...extra,
+    width: { ideal: idealWidth },
+    height: { ideal: idealHeight },
+    frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
+  };
+}
+
 async function switchCamera() {
   if (userVideoOff || !localStream) return;
   const oldTrack = localStream.getVideoTracks()[0];
@@ -561,11 +574,7 @@ async function switchCamera() {
   // 1. Try exact facingMode
   try {
     newStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { exact: targetFacing },
-        width: { ideal: CAPTURE.width },
-        height: { ideal: CAPTURE.height },
-      },
+      video: getVideoConstraints({ facingMode: { exact: targetFacing } }),
     });
   } catch {}
 
@@ -593,11 +602,7 @@ async function switchCamera() {
 
       if (targetDevice && targetDevice.deviceId) {
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            deviceId: { exact: targetDevice.deviceId },
-            width: { ideal: CAPTURE.width },
-            height: { ideal: CAPTURE.height },
-          },
+          video: getVideoConstraints({ deviceId: { exact: targetDevice.deviceId } }),
         });
       }
     } catch {}
@@ -607,11 +612,7 @@ async function switchCamera() {
   if (!newStream) {
     try {
       newStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: targetFacing,
-          width: { ideal: CAPTURE.width },
-          height: { ideal: CAPTURE.height },
-        },
+        video: getVideoConstraints({ facingMode: targetFacing }),
       });
     } catch {}
   }
@@ -621,11 +622,7 @@ async function switchCamera() {
     try {
       achievedFacing = currentFacingMode;
       newStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: currentFacingMode,
-          width: { ideal: CAPTURE.width },
-          height: { ideal: CAPTURE.height },
-        },
+        video: getVideoConstraints({ facingMode: currentFacingMode }),
       });
     } catch (e) {
       console.warn('Could not restore camera after switch failure:', e);
@@ -845,12 +842,7 @@ async function getLocalMedia() {
       autoGainControl: true,
       channelCount: 1, // mono — halves audio bandwidth vs stereo, inaudible difference on calls
     },
-    video: {
-      facingMode: currentFacingMode,
-      width: { ideal: CAPTURE.width },
-      height: { ideal: CAPTURE.height },
-      frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
-    },
+    video: getVideoConstraints({ facingMode: currentFacingMode }),
   };
   localStream = await navigator.mediaDevices.getUserMedia(constraints);
   els.localVideo.srcObject = localStream;
