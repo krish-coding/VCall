@@ -76,12 +76,24 @@
     background: #000;
     border-radius: 10px;
     overflow: hidden;
-    aspect-ratio: 16/9;
+    aspect-ratio: 4/3;
     border: 1px solid var(--border);
   }
-  video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+  video { width: 100%; height: 100%; object-fit: cover; display: block; }
   #localVideo { transform: scaleX(-1); }
   #localVideo.unmirrored { transform: none; }
+
+  @media (max-width: 600px) {
+    body { padding: 12px; }
+    .videos {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .video-wrap {
+      aspect-ratio: 4/3;
+      width: 100%;
+    }
+  }
   .label {
     position: absolute; bottom: 6px; left: 8px;
     font-size: 12px; background: rgba(0,0,0,0.6);

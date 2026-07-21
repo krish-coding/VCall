@@ -217,8 +217,8 @@ function connectSignaling() {
         break;
 
       case 'peer-left':
-        setLinkStatus('bad', 'other peer disconnected');
-        setBanner('The other person disconnected. Waiting for them to rejoin…');
+      case 'bye':
+        leaveCall('The call was ended by the other user.');
         break;
     }
   };
@@ -913,13 +913,22 @@ els.joinBtn.addEventListener('click', async () => {
   connectSignaling();
 });
 
-els.leaveBtn.addEventListener('click', () => {
+function leaveCall(bannerMsg = '') {
   manuallyLeft = true;
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   if (statsTimer) clearInterval(statsTimer);
-  if (pc) { pc.close(); pc = null; }
-  if (ws) { ws.close(); ws = null; }
-  if (localStream) { localStream.getTracks().forEach((t) => t.stop()); localStream = null; }
+  if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+  if (ws) {
+    if (ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify({ type: 'bye', room })); } catch (e) {}
+    }
+    try { ws.close(); } catch (e) {}
+    ws = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
   els.localVideo.srcObject = null;
   els.remoteVideo.srcObject = null;
   els.joinBtn.disabled = false;
@@ -934,5 +943,13 @@ els.leaveBtn.addEventListener('click', () => {
   connectionEstablishedAt = null;
   smoothedAvailKbps = null;
   setLinkStatus('idle', 'not connected');
-  setBanner('', false);
+  if (bannerMsg) {
+    setBanner(bannerMsg, true);
+  } else {
+    setBanner('', false);
+  }
+}
+
+els.leaveBtn.addEventListener('click', () => {
+  leaveCall();
 });
