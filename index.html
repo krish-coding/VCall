@@ -65,43 +65,48 @@
   button.secondary { background: #2a2f3a; }
   button.danger { background: var(--bad); }
   .videos {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
     gap: 10px;
     width: 100%;
     max-width: 720px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
   }
   .video-wrap {
     position: relative;
     background: #000;
     border-radius: 10px;
     overflow: hidden;
-    aspect-ratio: 4/3;
     border: 1px solid var(--border);
+    /* ponytail: no forced aspect-ratio — let the video's natural shape show through */
+    flex: 0 1 auto;
+    max-width: 50%;
+    max-height: 70vh;
   }
-  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* ponytail: contain = show full frame, no crop, no zoom */
+  video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
   #localVideo { transform: scaleX(-1); }
   #localVideo.unmirrored { transform: none; }
 
   @media (max-width: 600px) {
     body { padding: 10px; }
     .videos {
-      grid-template-columns: 1fr;
+      flex-direction: column;
       gap: 12px;
     }
     .video-wrap {
-      aspect-ratio: 16/9;
+      max-width: 100%;
       width: 100%;
     }
     .call-stage.is-fullscreen .video-wrap:first-child {
       width: 110px;
-      aspect-ratio: 9/16;
       border-radius: 12px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.5);
     }
     .call-stage.is-fullscreen .video-wrap:first-child #localVideo {
       display: block;
-      object-fit: cover;
+      object-fit: contain;
       transform: scaleX(-1);
     }
     .call-stage.is-fullscreen .video-wrap:first-child #localVideo.unmirrored {
@@ -179,14 +184,14 @@
     max-width: none;
     width: 100%;
     height: 100%;
-    grid-template-columns: 1fr;
+    flex-direction: column;
     gap: 0;
   }
-  .call-stage.is-fullscreen .video-wrap { border-radius: 0; border: none; aspect-ratio: unset; }
+  .call-stage.is-fullscreen .video-wrap { border-radius: 0; border: none; max-width: 100%; flex: 1; }
   .call-stage.is-fullscreen #localVideo { display: none; }
   .call-stage.is-fullscreen .video-wrap:first-child {
-    position: absolute; width: 160px; aspect-ratio: 4/3; bottom: 90px; right: 16px;
-    border-radius: 10px; border: 1px solid var(--border); z-index: 2;
+    position: absolute; width: 160px; bottom: 90px; right: 16px;
+    border-radius: 10px; border: 1px solid var(--border); z-index: 2; flex: 0 0 auto;
   }
   .call-stage.is-fullscreen .video-wrap:first-child #localVideo { display: block; }
   .call-stage.is-fullscreen .controls-bar {
@@ -206,10 +211,6 @@
   .call-stage.is-fullscreen.controls-hidden .controls-bar {
     opacity: 0;
     pointer-events: none;
-  }
-  .call-stage.is-fullscreen .video-wrap:last-child video {
-    object-fit: contain;
-    background: #000;
   }
 
   .header-row {
