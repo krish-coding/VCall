@@ -545,55 +545,17 @@ function toggleCamera() {
 let currentFacingMode = 'user';
 
 function getVideoConstraints(extra = {}) {
-  // ponytail: NO width/height/aspectRatio — explicit dimension hints tell some
-  // mobile browsers "I'm handling orientation" and they skip rotation, giving
-  // raw landscape sensor output. Without hints the browser captures naturally
-  // and applies rotation metadata so portrait phones send portrait video.
-  // ceiling: camera picks its own resolution; quality tiers handle downscaling.
+  const isPortrait = window.innerHeight > window.innerWidth;
+  const idealWidth = isPortrait ? 720 : 1280;
+  const idealHeight = isPortrait ? 1280 : 720;
+
   return {
     ...extra,
+    width: { ideal: idealWidth },
+    height: { ideal: idealHeight },
     frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
   };
 }
-
-// ponytail: on orientation change, re-request camera — applyConstraints can't
-// change orientation on an already-open track on most mobile browsers.
-let wasPortrait = window.innerHeight > window.innerWidth;
-async function handleOrientationChange() {
-  const portrait = window.innerHeight > window.innerWidth;
-  if (portrait === wasPortrait) return;
-  wasPortrait = portrait;
-  if (!localStream || userVideoOff) return;
-  const oldTrack = localStream.getVideoTracks()[0];
-  if (oldTrack) { localStream.removeTrack(oldTrack); oldTrack.stop(); }
-  try {
-    const s = await navigator.mediaDevices.getUserMedia({
-      video: getVideoConstraints({ facingMode: currentFacingMode }),
-    });
-    const newTrack = s.getVideoTracks()[0];
-    if (!newTrack) return;
-    localStream.addTrack(newTrack);
-    if (pc) {
-      const sender = pc.getSenders().find(x => x.track?.kind === 'video');
-      if (sender) await sender.replaceTrack(newTrack);
-    }
-    els.localVideo.srcObject = localStream;
-  } catch { /* camera re-request failed, keep going without video */ }
-}
-if (screen.orientation) screen.orientation.addEventListener('change', handleOrientationChange);
-window.addEventListener('resize', handleOrientationChange);
-
-// ponytail: set CSS aspect-ratio from actual video dimensions so the container
-// always matches the real video shape (portrait or landscape), regardless of
-// what constraints or rotation metadata the browser used.
-function trackVideoShape(videoEl) {
-  videoEl.addEventListener('resize', () => {
-    const w = videoEl.videoWidth, h = videoEl.videoHeight;
-    if (w && h) videoEl.style.aspectRatio = `${w} / ${h}`;
-  });
-}
-trackVideoShape(els.localVideo);
-trackVideoShape(els.remoteVideo);
 
 async function switchCamera() {
   if (userVideoOff || !localStream) return;
