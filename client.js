@@ -218,7 +218,7 @@ function connectSignaling() {
 
       case 'peer-left':
       case 'bye':
-        leaveCall('The call was ended by the other user.');
+        leaveCall('The call was ended by the other user.', false);
         break;
     }
   };
@@ -913,18 +913,23 @@ els.joinBtn.addEventListener('click', async () => {
   connectSignaling();
 });
 
-function leaveCall(bannerMsg = '') {
+function leaveCall(bannerMsg = '', notifyServer = true) {
   manuallyLeft = true;
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   if (statsTimer) clearInterval(statsTimer);
   if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+
   if (ws) {
-    if (ws.readyState === WebSocket.OPEN) {
-      try { ws.send(JSON.stringify({ type: 'bye', room })); } catch (e) {}
-    }
-    try { ws.close(); } catch (e) {}
+    const socket = ws;
     ws = null;
+    if (notifyServer && socket.readyState === WebSocket.OPEN) {
+      try { socket.send(JSON.stringify({ type: 'bye', room })); } catch (e) {}
+      setTimeout(() => { try { socket.close(); } catch (e) {} }, 100);
+    } else {
+      try { socket.close(); } catch (e) {}
+    }
   }
+
   if (localStream) {
     localStream.getTracks().forEach((t) => t.stop());
     localStream = null;
@@ -951,5 +956,13 @@ function leaveCall(bannerMsg = '') {
 }
 
 els.leaveBtn.addEventListener('click', () => {
-  leaveCall();
+  leaveCall('', true);
 });
+
+const sendByeOnUnload = () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try { ws.send(JSON.stringify({ type: 'bye', room })); } catch (e) {}
+  }
+};
+window.addEventListener('beforeunload', sendByeOnUnload);
+window.addEventListener('pagehide', sendByeOnUnload);
