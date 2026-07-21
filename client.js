@@ -516,20 +516,32 @@ function toggleCamera() {
   }
 }
 
-// ponytail: camera switch uses RTCRtpSender.replaceTrack without full ICE renegotiation
+// ponytail: camera switch cycles enumerated video devices or toggles facingMode, replacing track via RTCRtpSender
 let currentFacingMode = 'user';
 
 async function switchCamera() {
   if (userVideoOff || !localStream) return;
-  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-  els.localVideo.classList.toggle('unmirrored', currentFacingMode !== 'user');
+  const oldTrack = localStream.getVideoTracks()[0];
+  const targetFacing = currentFacingMode === 'user' ? 'environment' : 'user';
 
   try {
+    const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+    let videoConstraint;
+
+    if (devices.length > 1 && oldTrack) {
+      const currentDeviceId = oldTrack.getSettings()?.deviceId;
+      const currentIdx = devices.findIndex((d) => d.deviceId === currentDeviceId);
+      const nextDevice = devices[(currentIdx + 1) % devices.length];
+      videoConstraint = { deviceId: { exact: nextDevice.deviceId } };
+    } else {
+      videoConstraint = { facingMode: { exact: targetFacing } };
+    }
+
     let newStream;
     try {
       newStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { exact: currentFacingMode },
+          ...videoConstraint,
           width: { ideal: CAPTURE.width },
           height: { ideal: CAPTURE.height },
           frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
@@ -538,7 +550,7 @@ async function switchCamera() {
     } catch {
       newStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: currentFacingMode,
+          facingMode: targetFacing,
           width: { ideal: CAPTURE.width },
           height: { ideal: CAPTURE.height },
           frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
@@ -547,18 +559,25 @@ async function switchCamera() {
     }
 
     const newTrack = newStream.getVideoTracks()[0];
-    const oldTrack = localStream.getVideoTracks()[0];
+    if (!newTrack) return;
+
     if (oldTrack) {
       localStream.removeTrack(oldTrack);
       oldTrack.stop();
     }
-    if (newTrack) {
-      localStream.addTrack(newTrack);
-      if (pc) {
-        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
-        if (sender) await sender.replaceTrack(newTrack);
-      }
+    localStream.addTrack(newTrack);
+
+    if (pc) {
+      const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+      if (sender) await sender.replaceTrack(newTrack);
     }
+
+    const settings = newTrack.getSettings();
+    const label = (newTrack.label || '').toLowerCase();
+    const isBack = settings.facingMode === 'environment' || label.includes('back') || label.includes('rear') || targetFacing === 'environment';
+
+    currentFacingMode = isBack ? 'environment' : 'user';
+    els.localVideo.classList.toggle('unmirrored', isBack);
     els.localVideo.srcObject = localStream;
   } catch (e) {
     console.warn('Camera switch failed:', e);
