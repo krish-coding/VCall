@@ -544,29 +544,37 @@ function toggleCamera() {
 // ponytail: camera switch releases hardware track, tries exact/deviceId/soft constraints, and updates mirror state only on real back camera
 let currentFacingMode = 'user';
 
-function getVideoConstraints(extra = {}) {
-  const isPortrait = window.innerHeight > window.innerWidth;
-  const idealWidth = isPortrait ? 720 : 1280;
-  const idealHeight = isPortrait ? 1280 : 720;
+// ponytail: screen.orientation is more reliable than viewport size on mobile
+function isDevicePortrait() {
+  const ot = screen.orientation?.type || '';
+  if (ot) return ot.startsWith('portrait');
+  return window.innerHeight > window.innerWidth;
+}
 
+function getVideoConstraints(extra = {}) {
+  const portrait = isDevicePortrait();
   return {
     ...extra,
-    width: { ideal: idealWidth },
-    height: { ideal: idealHeight },
+    width: { ideal: portrait ? 720 : 1280 },
+    height: { ideal: portrait ? 1280 : 720 },
+    // ponytail: aspectRatio is respected by mobile browsers that ignore w/h ideals
+    aspectRatio: portrait ? { ideal: 9 / 16 } : { ideal: 16 / 9 },
     frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
   };
 }
 
 // ponytail: re-apply video constraints when device rotates so sent resolution matches new orientation
-let wasPortrait = window.innerHeight > window.innerWidth;
-window.addEventListener('resize', () => {
-  const isPortrait = window.innerHeight > window.innerWidth;
-  if (isPortrait === wasPortrait) return;
-  wasPortrait = isPortrait;
+let wasPortrait = isDevicePortrait();
+function handleOrientationChange() {
+  const portrait = isDevicePortrait();
+  if (portrait === wasPortrait) return;
+  wasPortrait = portrait;
   if (!localStream || userVideoOff) return;
   const track = localStream.getVideoTracks()[0];
   if (track) track.applyConstraints(getVideoConstraints({ facingMode: currentFacingMode })).catch(() => {});
-});
+}
+if (screen.orientation) screen.orientation.addEventListener('change', handleOrientationChange);
+window.addEventListener('resize', handleOrientationChange);
 
 async function switchCamera() {
   if (userVideoOff || !localStream) return;
@@ -856,6 +864,23 @@ async function getLocalMedia() {
     video: getVideoConstraints({ facingMode: currentFacingMode }),
   };
   localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+  // ponytail: if phone is portrait but camera gave landscape, try forcing portrait
+  // ceiling: fails silently on devices that truly can't do portrait — they send landscape
+  if (isDevicePortrait()) {
+    const track = localStream.getVideoTracks()[0];
+    const s = track?.getSettings();
+    if (s && s.width > s.height) {
+      try {
+        await track.applyConstraints({
+          aspectRatio: { exact: 9 / 16 },
+          width: { ideal: 720 },
+          height: { ideal: 1280 },
+        });
+      } catch { /* can't force portrait, live with what we have */ }
+    }
+  }
+
   els.localVideo.srcObject = localStream;
 }
 
