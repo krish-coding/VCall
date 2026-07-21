@@ -101,16 +101,17 @@ const CONFIG = {
 
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    {
-      urls: 'turn:free.expressturn.com:3478',
-      username: '000000002098864023',
-      credential: 'NzC5d9rM4ZACkoQQgq/dGEXclr0=',
-    },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.services.mozilla.com' },
   ],
 };
 
 let ws = null;
 let pc = null;
+let pendingCandidates = [];
 let localStream = null;
 let role = null; // 'offerer' | 'answerer'
 let room = null;
@@ -142,10 +143,23 @@ function setLinkStatus(state, text) {
   if (els.connLabel) els.connLabel.textContent = text;
 }
 
+async function flushPendingCandidates() {
+  if (!pc || !pc.remoteDescription || !pc.remoteDescription.type) return;
+  while (pendingCandidates.length > 0) {
+    const cand = pendingCandidates.shift();
+    try { await pc.addIceCandidate(cand); } catch (e) {}
+  }
+}
+
 // ---------------------------------------------------------------------
 // Signaling (WebSocket) with reconnect-with-backoff
 // ---------------------------------------------------------------------
 function connectSignaling() {
+  if (ws) {
+    try { ws.close(); } catch (e) {}
+    ws = null;
+  }
+
   const url = CONFIG.signalingUrl;
   ws = new WebSocket(url);
 
@@ -168,26 +182,37 @@ function connectSignaling() {
         break;
 
       case 'ready':
+        if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+        pendingCandidates = [];
         await ensurePeerConnection();
         if (role === 'offerer') await makeOffer();
         break;
 
       case 'offer':
+        if (pc) { try { pc.close(); } catch (e) {} pc = null; }
         await ensurePeerConnection();
         await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+        await flushPendingCandidates();
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         applyTier(currentTierIndex); // must run after local description exists
-        ws.send(JSON.stringify({ type: 'answer', sdp: pc.localDescription }));
+        wsSend({ type: 'answer', sdp: pc.localDescription });
         break;
 
       case 'answer':
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+          await flushPendingCandidates();
+        }
         break;
 
       case 'ice-candidate':
         if (msg.candidate) {
-          try { await pc.addIceCandidate(msg.candidate); } catch (e) { /* ignore */ }
+          if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+            try { await pc.addIceCandidate(msg.candidate); } catch (e) {}
+          } else {
+            pendingCandidates.push(msg.candidate);
+          }
         }
         break;
 
