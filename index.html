@@ -84,8 +84,8 @@
     max-width: 50%;
     max-height: 70vh;
   }
-  /* ponytail: contain = show full frame, no crop, no zoom */
-  video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+  /* ponytail: contain + height:auto = video takes its natural shape (portrait or landscape) */
+  video { width: 100%; height: auto; object-fit: contain; display: block; background: #000; }
   #localVideo { transform: scaleX(-1); }
   #localVideo.unmirrored { transform: none; }
 
@@ -188,6 +188,7 @@
     gap: 0;
   }
   .call-stage.is-fullscreen .video-wrap { border-radius: 0; border: none; max-width: 100%; flex: 1; }
+  .call-stage.is-fullscreen .video-wrap video { height: 100%; }
   .call-stage.is-fullscreen #localVideo { display: none; }
   .call-stage.is-fullscreen .video-wrap:first-child {
     position: absolute; width: 160px; bottom: 90px; right: 16px;

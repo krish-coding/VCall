@@ -557,6 +557,17 @@ function getVideoConstraints(extra = {}) {
   };
 }
 
+// ponytail: re-apply video constraints when device rotates so sent resolution matches new orientation
+let wasPortrait = window.innerHeight > window.innerWidth;
+window.addEventListener('resize', () => {
+  const isPortrait = window.innerHeight > window.innerWidth;
+  if (isPortrait === wasPortrait) return;
+  wasPortrait = isPortrait;
+  if (!localStream || userVideoOff) return;
+  const track = localStream.getVideoTracks()[0];
+  if (track) track.applyConstraints(getVideoConstraints({ facingMode: currentFacingMode })).catch(() => {});
+});
+
 async function switchCamera() {
   if (userVideoOff || !localStream) return;
   const oldTrack = localStream.getVideoTracks()[0];
