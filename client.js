@@ -43,6 +43,7 @@ const els = {
   camBtn: $('camBtn'),
   fullscreenBtn: $('fullscreenBtn'),
   pipBtn: $('pipBtn'),
+  switchCamBtn: $('switchCamBtn'),
   videosContainer: $('videosContainer'),
   callStage: $('callStage'),
   micIconOn: $('micIconOn'),
@@ -666,6 +667,7 @@ function setInCallControlsEnabled(enabled) {
   els.camBtn.disabled = !enabled;
   els.fullscreenBtn.disabled = !enabled;
   els.pipBtn.disabled = !enabled;
+  els.switchCamBtn.disabled = !enabled;
   els.leaveBtn.disabled = !enabled;
 }
 
@@ -688,6 +690,9 @@ els.fullscreenBtn.addEventListener('click', toggleFullscreen);
 // ---------------------------------------------------------------------
 // Media capture
 // ---------------------------------------------------------------------
+let facingMode = 'user'; // 'user' = front camera, 'environment' = back camera
+let switchingCamera = false;
+
 async function getLocalMedia() {
   const constraints = {
     audio: {
@@ -697,6 +702,7 @@ async function getLocalMedia() {
       channelCount: 1, // mono — halves audio bandwidth vs stereo, inaudible difference on calls
     },
     video: {
+      facingMode: { ideal: facingMode },
       width: { ideal: CAPTURE.width },
       height: { ideal: CAPTURE.height },
       frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
@@ -704,7 +710,80 @@ async function getLocalMedia() {
   };
   localStream = await navigator.mediaDevices.getUserMedia(constraints);
   els.localVideo.srcObject = localStream;
+  updateMirrorState();
+  detectMultipleCameras();
 }
+
+// Self-view is mirrored for the front camera (matches how people expect to
+// see themselves — like a mirror), but NOT for the back camera, since that
+// shows the outside world and mirroring it would look wrong (text/signs
+// backwards, etc).
+function updateMirrorState() {
+  els.localVideo.classList.toggle('mirrored', facingMode === 'user');
+}
+
+// Only show the switch-camera button on devices that actually have more
+// than one camera — no point offering it on a laptop with a single webcam.
+async function detectMultipleCameras() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+    els.switchCamBtn.style.display = videoInputs.length > 1 ? '' : 'none';
+  } catch (e) {
+    // If detection isn't possible, leave it visible — worst case a tap is
+    // a harmless no-op on a single-camera device.
+  }
+}
+
+async function switchCamera() {
+  if (!localStream || switchingCamera) return;
+  switchingCamera = true;
+  els.switchCamBtn.disabled = true;
+
+  const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+  try {
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: newFacingMode },
+        width: { ideal: CAPTURE.width },
+        height: { ideal: CAPTURE.height },
+        frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
+      },
+    });
+    const newTrack = newStream.getVideoTracks()[0];
+    const oldTrack = localStream.getVideoTracks()[0];
+
+    // Swap the track actually being sent to the other peer, if in a call.
+    if (pc) {
+      const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+      if (sender) await sender.replaceTrack(newTrack);
+    }
+
+    if (oldTrack) {
+      localStream.removeTrack(oldTrack);
+      oldTrack.stop();
+    }
+    localStream.addTrack(newTrack);
+    els.localVideo.srcObject = localStream;
+
+    facingMode = newFacingMode;
+    updateMirrorState();
+
+    // Re-apply current quality tier settings to the new track, and respect
+    // a manual camera-off toggle if the user had turned video off.
+    if (pc) applyTier(currentTierIndex);
+    if (userVideoOff) setVideoEnabled(false);
+  } catch (e) {
+    console.warn('Camera switch failed', e);
+    setBanner('Could not switch camera on this device.');
+  } finally {
+    switchingCamera = false;
+    els.switchCamBtn.disabled = false;
+  }
+}
+
+els.switchCamBtn.addEventListener('click', switchCamera);
 
 // Some browsers (particularly iOS Safari, and Chrome in certain embedded
 // webviews) don't reliably show the permission prompt automatically, or
@@ -779,6 +858,7 @@ els.leaveBtn.addEventListener('click', () => {
   els.permBtn.disabled = false;
   els.permBtn.textContent = 'Allow camera & microphone';
   els.permBtn.classList.remove('secondary');
+  facingMode = 'user';
   currentTierIndex = 0;
   connectionEstablishedAt = null;
   smoothedAvailKbps = null;

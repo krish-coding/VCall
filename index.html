@@ -80,6 +80,7 @@
     border: 1px solid var(--border);
   }
   video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #localVideo.mirrored { transform: scaleX(-1); }
   .label {
     position: absolute; bottom: 6px; left: 8px;
     font-size: 12px; background: rgba(0,0,0,0.6);
@@ -286,6 +287,15 @@
       <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="2" y="4" width="20" height="16" rx="2"/>
         <rect x="12" y="12" width="8" height="6" rx="1" fill="var(--text)" stroke="none"/>
+      </svg>
+    </button>
+
+    <button class="ctrl-btn" id="switchCamBtn" disabled title="Switch camera" style="display:none">
+      <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 2l4 4-4 4"/>
+        <path d="M21 6H8a5 5 0 0 0-5 5"/>
+        <path d="M7 22l-4-4 4-4"/>
+        <path d="M3 18h13a5 5 0 0 0 5-5"/>
       </svg>
     </button>
 
