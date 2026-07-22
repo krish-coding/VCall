@@ -194,8 +194,7 @@ function connectSignaling() {
         break;
 
       case 'peer-left':
-        setLinkStatus('bad', 'other peer disconnected');
-        setBanner('The other person disconnected. Waiting for them to rejoin…');
+        leaveCall('The other person left the call.');
         break;
     }
   };
@@ -786,10 +785,13 @@ async function switchCamera() {
   } catch (e) {
     console.warn('Camera switch failed', e);
     setBanner('This device doesn\'t have another camera to switch to.');
-    // The old track was already stopped before the attempt — if it didn't
-    // get replaced, get the original camera back rather than leaving the
-    // person with no video at all.
-    if (localStream.getVideoTracks().length === 0) {
+    // The old track was stopped before the attempt but never removed from
+    // localStream on this failure path, so it was still sitting there
+    // dead (readyState 'ended') — checking track *count* here always saw
+    // 1 and skipped recovery, leaving a black frame. Check for an actual
+    // live track instead.
+    const hasLiveVideo = localStream.getVideoTracks().some((t) => t.readyState === 'live');
+    if (!hasLiveVideo) {
       try {
         const restored = await navigator.mediaDevices.getUserMedia({
           audio: false,
@@ -801,12 +803,14 @@ async function switchCamera() {
           },
         });
         const restoredTrack = restored.getVideoTracks()[0];
+        if (oldTrack) localStream.removeTrack(oldTrack); // drop the dead track
         if (pc) {
           const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
           if (sender) await sender.replaceTrack(restoredTrack);
         }
         localStream.addTrack(restoredTrack);
         els.localVideo.srcObject = localStream;
+        updateMirrorState();
         if (pc) applyTier(currentTierIndex);
         if (userVideoOff) setVideoEnabled(false);
       } catch (e2) {
@@ -883,7 +887,7 @@ els.joinBtn.addEventListener('click', async () => {
   connectSignaling();
 });
 
-els.leaveBtn.addEventListener('click', () => {
+function leaveCall(bannerMessage) {
   manuallyLeft = true;
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   if (statsTimer) clearInterval(statsTimer);
@@ -905,5 +909,7 @@ els.leaveBtn.addEventListener('click', () => {
   connectionEstablishedAt = null;
   smoothedAvailKbps = null;
   setLinkStatus('idle', 'not connected');
-  setBanner('', false);
-});
+  setBanner(bannerMessage || '', !!bannerMessage);
+}
+
+els.leaveBtn.addEventListener('click', () => leaveCall());
