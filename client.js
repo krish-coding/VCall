@@ -23,6 +23,8 @@ const els = {
   roomId: $('roomId'),
   joinBtn: $('joinBtn'),
   leaveBtn: $('leaveBtn'),
+  advancedToggle: $('advancedToggle'),
+  advancedPanel: $('advancedPanel'),
   permBtn: $('permBtn'),
   banner: $('banner'),
   localVideo: $('localVideo'),
@@ -741,18 +743,28 @@ async function switchCamera() {
   els.switchCamBtn.disabled = true;
 
   const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+  const oldTrack = localStream.getVideoTracks()[0];
+
   try {
+    // Release the current camera BEFORE requesting the new one. Mobile
+    // browsers (especially iOS Safari) generally only allow one active
+    // camera session at a time — requesting a second while the first is
+    // still running is a common cause of the switch silently failing.
+    if (oldTrack) oldTrack.stop();
+
+    // `exact` (not `ideal`) so this either genuinely switches cameras or
+    // fails honestly — `ideal` lets the browser silently keep the current
+    // camera, which caused the mirror to flip without the camera changing.
     const newStream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
-        facingMode: { ideal: newFacingMode },
+        facingMode: { exact: newFacingMode },
         width: { ideal: CAPTURE.width },
         height: { ideal: CAPTURE.height },
         frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
       },
     });
     const newTrack = newStream.getVideoTracks()[0];
-    const oldTrack = localStream.getVideoTracks()[0];
 
     // Swap the track actually being sent to the other peer, if in a call.
     if (pc) {
@@ -760,10 +772,7 @@ async function switchCamera() {
       if (sender) await sender.replaceTrack(newTrack);
     }
 
-    if (oldTrack) {
-      localStream.removeTrack(oldTrack);
-      oldTrack.stop();
-    }
+    if (oldTrack) localStream.removeTrack(oldTrack);
     localStream.addTrack(newTrack);
     els.localVideo.srcObject = localStream;
 
@@ -776,7 +785,34 @@ async function switchCamera() {
     if (userVideoOff) setVideoEnabled(false);
   } catch (e) {
     console.warn('Camera switch failed', e);
-    setBanner('Could not switch camera on this device.');
+    setBanner('This device doesn\'t have another camera to switch to.');
+    // The old track was already stopped before the attempt — if it didn't
+    // get replaced, get the original camera back rather than leaving the
+    // person with no video at all.
+    if (localStream.getVideoTracks().length === 0) {
+      try {
+        const restored = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: CAPTURE.width },
+            height: { ideal: CAPTURE.height },
+            frameRate: { ideal: CAPTURE.fps, max: CAPTURE.fps },
+          },
+        });
+        const restoredTrack = restored.getVideoTracks()[0];
+        if (pc) {
+          const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+          if (sender) await sender.replaceTrack(restoredTrack);
+        }
+        localStream.addTrack(restoredTrack);
+        els.localVideo.srcObject = localStream;
+        if (pc) applyTier(currentTierIndex);
+        if (userVideoOff) setVideoEnabled(false);
+      } catch (e2) {
+        console.warn('Could not restore camera after failed switch', e2);
+      }
+    }
   } finally {
     switchingCamera = false;
     els.switchCamBtn.disabled = false;
@@ -784,6 +820,12 @@ async function switchCamera() {
 }
 
 els.switchCamBtn.addEventListener('click', switchCamera);
+
+els.advancedToggle.addEventListener('click', () => {
+  const showing = els.advancedPanel.style.display !== 'none';
+  els.advancedPanel.style.display = showing ? 'none' : '';
+  els.advancedToggle.textContent = showing ? 'Connection info' : 'Hide connection info';
+});
 
 // Some browsers (particularly iOS Safari, and Chrome in certain embedded
 // webviews) don't reliably show the permission prompt automatically, or

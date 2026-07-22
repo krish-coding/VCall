@@ -215,7 +215,7 @@
 <body>
 
   <h1>VCall</h1>
-<div class="sub">Tuned for slow / unstable networks — audio is prioritized over video automatically.</div>
+<div class="sub">Simple, reliable video calls — even on a bad connection.</div>
 
 <div class="panel">
   <div class="row">
@@ -308,7 +308,11 @@
   </div>
 </div>
 
-<div class="panel">
+<div style="width:100%; max-width:720px; text-align:center;">
+  <button id="advancedToggle" style="background:none; border:none; color:var(--muted); font-size:12px; padding:4px; cursor:pointer; font-weight:400;">Connection info</button>
+</div>
+
+<div class="panel" id="advancedPanel" style="display:none;">
   <div class="row">
     <span class="status-dot" id="linkDot"></span>
     <span id="linkText" style="font-size:13px;color:var(--muted)">Not connected</span>
