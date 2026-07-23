@@ -189,13 +189,14 @@
     opacity: 0;
     pointer-events: none;
   }
-  /* Main (non-pip) video fills the screen edge-to-edge in fullscreen but
-     is never cropped — letterboxes with black bars instead, so the whole
-     frame stays visible regardless of the video's or screen's orientation
-     (portrait phone video on a landscape screen, etc). */
+  /* Main (non-pip) video fills the screen edge-to-edge in fullscreen,
+     cropping evenly on the long edge if the video's aspect ratio doesn't
+     match the screen — same behavior as Zoom/Meet/FaceTime. (Previously
+     used object-fit:contain to avoid any cropping, but that letterboxes
+     with visible black bars whenever the aspect ratio doesn't match,
+     which looks like a small floating box rather than a full-screen call.) */
   .call-stage.is-fullscreen .video-wrap:last-child video {
-    object-fit: contain;
-    background: #000;
+    object-fit: cover;
   }
 
   .header-row {
